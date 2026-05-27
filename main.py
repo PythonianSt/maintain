@@ -6,6 +6,7 @@ import base64
 from io import StringIO
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from openai import OpenAI
 
 st.set_page_config(page_title="Campus Psychosomatic Signal Intake", page_icon="🧠", layout="centered")
 
@@ -22,6 +23,39 @@ HEADERS = {
     "Authorization": f"Bearer {GITHUB_TOKEN}",
     "Accept": "application/vnd.github+json"
 }
+client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+MODEL = st.secrets["openai"].get("model", "gpt-5.5")
+
+def generate_gpt_action(student_summary):
+    prompt = f"""
+คุณคือผู้ช่วยแพทย์ในสถานพยาบาลมหาวิทยาลัย
+ช่วยสร้าง Action Plan ภาษาไทยแบบสุภาพ อบอุ่น และไม่ตัดสิน
+สำหรับนักศึกษาที่มีอาการกาย-ใจ/psychosomatic signals
+
+ต้องมี 3 ส่วน:
+1. ข้อความ check-in สำหรับส่งให้นักศึกษา
+2. ข้อเสนอการพูดคุยปรึกษา/counseling offer
+3. ข้อความให้ติดต่อพยาบาล/สถานพยาบาล
+
+ห้ามวินิจฉัยโรค
+หากมี suicidal item positive ให้เน้นความปลอดภัยและการพบเจ้าหน้าที่ทันที
+
+ข้อมูลนักศึกษา:
+{student_summary}
+"""
+
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": "You write safe Thai health-support messages for university students."},
+            {"role": "user", "content": prompt}
+        ],
+        max_completion_tokens=900
+    )
+    return response.choices[0].message.content
+    if suicidal:
+    st.error("พบคำตอบเกี่ยวกับความคิดทำร้ายตนเอง ควรประเมินความปลอดภัยทันทีและไม่ควรปล่อยให้อยู่ลำพังหากมีความเสี่ยง")
+
 
 def now_bkk():
     return datetime.now(ZoneInfo("Asia/Bangkok")).strftime("%Y-%m-%d %H:%M:%S")
@@ -180,6 +214,39 @@ if suicidal:
 
 note = st.text_area("บันทึกเพิ่มเติมของพยาบาล/แพทย์")
 
+st.subheader("6) Action Plan via GPT")
+
+student_summary = f"""
+รหัสนักศึกษา: {student_id}
+คณะ: {faculty}
+ชั้นปี: {year}
+อาการสำคัญ: {visit_reason}
+Sleep score: {sleep}/10
+Fatigue score: {fatigue}/10
+Class attendance: {class_attendance}%
+Exercise: {exercise_freq} วัน/สัปดาห์
+Loneliness: {loneliness}/10
+Repeated clinic visits: {repeated_visits_self}
+PHQ-9: {phq9} ({phq_level(phq9)})
+GAD-7: {gad7} ({gad_level(gad7)})
+Suicidal item positive: {suicidal}
+Psychosomatic signal score: {signal_score}
+Traffic level: {color}
+Advice: {advice}
+"""
+
+if st.button("🤖 สร้าง Action Plan ด้วย GPT"):
+    with st.spinner("กำลังสร้างข้อความแนะนำ..."):
+        action_plan = generate_gpt_action(student_summary)
+        st.session_state["action_plan"] = action_plan
+
+if "action_plan" in st.session_state:
+    st.text_area(
+        "Action Plan ที่สามารถ copy ส่งต่อ/บันทึกได้",
+        st.session_state["action_plan"],
+        height=350
+    )
+
 if st.button("💾 บันทึกข้อมูลลง GitHub CSV"):
     if not student_id.strip():
         st.error("กรุณากรอกรหัสนักศึกษา")
@@ -207,7 +274,8 @@ if st.button("💾 บันทึกข้อมูลลง GitHub CSV"):
         "traffic_level": color,
         "advice": advice,
         "clinical_note": note,
-        "pdpa_consent": True
+        "pdpa_consent": True,
+        "gpt_action_plan": st.session_state.get("action_plan", "")
     }
 
     new_df = pd.DataFrame([row], index=[student_id])
