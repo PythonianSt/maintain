@@ -27,33 +27,68 @@ client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 MODEL = st.secrets["openai"].get("model", "gpt-5.5")
 
 def generate_gpt_action(student_summary):
+    """
+    Generate a Thai action plan. Uses the newer Responses API first, then falls back
+    to Chat Completions. Returns a non-empty string or raises a visible error.
+    """
     prompt = f"""
 คุณคือผู้ช่วยแพทย์ในสถานพยาบาลมหาวิทยาลัย
 ช่วยสร้าง Action Plan ภาษาไทยแบบสุภาพ อบอุ่น และไม่ตัดสิน
 สำหรับนักศึกษาที่มีอาการกาย-ใจ/psychosomatic signals
 
-ต้องมี 3 ส่วน:
-1. ข้อความ check-in สำหรับส่งให้นักศึกษา
-2. ข้อเสนอการพูดคุยปรึกษา/counseling offer
-3. ข้อความให้ติดต่อพยาบาล/สถานพยาบาล
+ต้องตอบเป็นภาษาไทย และต้องมี 3 หัวข้อชัดเจน:
+1) ข้อความ check-in สำหรับส่งให้นักศึกษา
+2) ข้อเสนอการพูดคุยปรึกษา / counseling offer
+3) ช่องทางติดต่อพยาบาล / สถานพยาบาล
 
-ห้ามวินิจฉัยโรค
-หากมี suicidal item positive ให้เน้นความปลอดภัยและการพบเจ้าหน้าที่ทันที
+หลักความปลอดภัย:
+- ห้ามวินิจฉัยโรค
+- ห้ามกล่าวว่านักศึกษาเป็นโรคซึมเศร้า วิตกกังวล หรือ psychosomatic disorder
+- ใช้คำว่า “สัญญาณที่ควรดูแลต่อเนื่อง” แทนการวินิจฉัย
+- หาก suicidal item positive = True ให้เน้นความปลอดภัย พบเจ้าหน้าที่ทันที และไม่ควรอยู่ลำพัง
+- ทำให้ข้อความสั้นพอที่จะ copy ส่งทาง LINE/SMS ได้
 
 ข้อมูลนักศึกษา:
 {student_summary}
 """
 
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": "You write safe Thai health-support messages for university students."},
-            {"role": "user", "content": prompt}
-        ],
-        max_completion_tokens=900
+    instructions = (
+        "You write safe, warm, non-judgmental Thai health-support messages "
+        "for university students. Do not diagnose. Always include check-in, "
+        "counseling offer, and nurse/infirmary contact."
     )
-    return response.choices[0].message.content
 
+    # Preferred current API
+    try:
+        response = client.responses.create(
+            model=MODEL,
+            instructions=instructions,
+            input=prompt,
+            max_output_tokens=900,
+        )
+        text = getattr(response, "output_text", "") or ""
+        if text.strip():
+            return text.strip()
+    except Exception as e:
+        st.warning(f"Responses API ใช้ไม่ได้ จึงลองใช้ Chat Completions แทน: {e}")
+
+    # Fallback API
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": instructions},
+                {"role": "user", "content": prompt},
+            ],
+            max_completion_tokens=900,
+        )
+        text = response.choices[0].message.content or ""
+        if text.strip():
+            return text.strip()
+        raise ValueError("GPT returned empty content.")
+    except Exception as e:
+        st.error(f"ไม่สามารถสร้าง Action Plan ได้: {e}")
+        return ""
 
 
 def now_bkk():
@@ -235,16 +270,26 @@ Advice: {advice}
 """
 
 if st.button("🤖 สร้าง Action Plan ด้วย GPT"):
-    with st.spinner("กำลังสร้างข้อความแนะนำ..."):
-        action_plan = generate_gpt_action(student_summary)
-        st.session_state["action_plan"] = action_plan
+    if not student_id.strip():
+        st.warning("กรุณากรอกรหัสนักศึกษาก่อนสร้าง Action Plan")
+    else:
+        with st.spinner("กำลังสร้างข้อความแนะนำ..."):
+            action_plan = generate_gpt_action(student_summary)
+            if action_plan.strip():
+                st.session_state["action_plan"] = action_plan
+                st.success("สร้าง Action Plan สำเร็จ")
+            else:
+                st.session_state["action_plan"] = ""
+                st.error("Action Plan ว่างเปล่า กรุณาตรวจสอบ OpenAI model/API key หรือดูข้อความ error ด้านบน")
 
-if "action_plan" in st.session_state:
+if st.session_state.get("action_plan", "").strip():
     st.text_area(
         "Action Plan ที่สามารถ copy ส่งต่อ/บันทึกได้",
         st.session_state["action_plan"],
         height=350
     )
+else:
+    st.info("กดปุ่ม 🤖 เพื่อสร้างข้อความ check-in, counseling offer และช่องทางติดต่อพยาบาล")
 
 if st.button("💾 บันทึกข้อมูลลง GitHub CSV"):
     if not student_id.strip():
