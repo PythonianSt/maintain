@@ -53,8 +53,7 @@ def generate_gpt_action(student_summary):
         max_completion_tokens=900
     )
     return response.choices[0].message.content
-if suicidal:
-    st.error("พบคำตอบเกี่ยวกับความคิดทำร้ายตนเอง ควรประเมินความปลอดภัยทันทีและไม่ควรปล่อยให้อยู่ลำพังหากมีความเสี่ยง")
+
 
 
 def now_bkk():
