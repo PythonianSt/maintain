@@ -1,0 +1,2 @@
+student_id,timestamp_bkk,faculty,year,visit_reason,sleep_score,fatigue_score,class_attendance_percent,exercise_days_per_week,loneliness_score,repeated_visits_self_report,phq9,phq9_level,gad7,gad7_level,suicidal_item_positive,psychosomatic_signal_score,traffic_level,advice,clinical_note,pdpa_consent
+3100800546087,2026-05-27 14:13:02,แพทยศาสตร์,อื่น ๆ,นอนไม่หลับ,2,6,100,6,3,1,5,เล็กน้อย,6,เล็กน้อย,False,9,เขียว,ให้คำแนะนำ self-care และติดตามตามความเหมาะสม,มีความกังวลเรื่องสุขภาพหลายระบบในครั้งเดียวมากเกินไป,True
